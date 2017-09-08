@@ -22,24 +22,26 @@ ERR_TOO_FEW_ARGUMENTS="-0.9901"
 ERR_ATOM_EMPTY="-0.9910"
 ERR_HTDOCS_EMPTY="-0.9911"
 ERR_HTDOCS_NO_DIR="-0.9912"
-ERR_TODO_TASK_INVALID="-0.9913"
+ERR_HTDOCS_RIOT_NO_LINK="-0.9913"
+ERR_TODO_TASK_INVALID="-0.9914"
 
 ERR_MISSING_WHICH="-0.9920"
 ERR_MISSING_GREP="-0.9921"
 ERR_MISSING_WGET_AND_CURL="-0.9922"
 ERR_MISSING_HEAD="-0.9923"
+ERR_MISSING_NGINX="-0.9924"
 
 ERR_GET_REMOTE_VERSION="-0.9930"
 ERR_GET_LOCAL_VERSION="-0.9931"
 
-ERR_UPDATE_NEEDED="-0.9940"
 
-ERR_UPDATE_DOWNLOAD="-0.9941"
+ERR_CD_TO_HTDOCS="-0.9941"
+ERR_UPDATE_DOWNLOAD="-0.9942"
 
 ERR_INSTALL_WILL_NOT_HAPPEN="-0.9950"
 ERR_UPDATE_EXTRACT="-0.9951"
-ERR_EXTRACTED_PERMISSIONS="-0.9952"
-ERR_UPDATE_INSTALL="-0.9953"
+ERR_COPY_OLD_CONFIG="-0.9952"
+ERR_EXTRACTED_PERMISSIONS="-0.9953"
 
 ERR_FAILED_RM_LINK="-0.9961"
 ERR_FAILED_LINK_CREATE="-0.9962"
@@ -48,9 +50,11 @@ ERR_NGINX_RELOAD="-0.9964"
 
 ERR_UNKNOWN="-0.9999"
 
+ERR_UPDATE_NEEDED="-0.2000"
+ERR_DOWNLOADED_UPDATE_INSTALL_REQUIRED="-0.1000"
+
 OK_UP_TO_DATE="0.0000"
-OK_UPDATE_DOWNLOADED="0.0001"
-OK_UPDATE_INSTALLED="0.0002"
+OK_UPDATE_INSTALLED="0.0001"
 
 ##################################################
 # Check argument number we require
@@ -87,11 +91,16 @@ if [ ! -d "$HTDOCS" ]; then
   exit 1
 fi
 
-if [ ! -z "$TASK_TODO" ]; then
+if [ ! -h "${HTDOCS}/riot" ]; then
+  echo $ERR_HTDOCS_RIOT_NO_LINK
+  exit 1
+fi
+
+if [ -z "$TASK_TODO" ]; then
   TASK_TODO="CHECK"
 fi
 
-if [ "$TASK_TODO" != "CHECK" -a "$TASK_TODO" != "DOWNLOAD" -a "$TASK_TODO" != "INSTALL" ]; then
+if [ "$TASK_TODO" != "CHECK" ] && [ "$TASK_TODO" != "DOWNLOAD" ] && [ "$TASK_TODO" != "INSTALL" ]; then
   echo $ERR_TODO_TASK_INVALID
   exit 1
 fi
@@ -99,48 +108,56 @@ fi
 ##################################################
 # Check the local tools we want to use
 
-WGET=`which wget`
-CURL=`which curl`
-GREP=`which grep`
-HEAD=`which head`
+WHICH=$(which which)
 
-if [ $? -eq 127 ]; then
+if [ $? -eq 127 ] || [ -z "$WHICH" ]; then
   echo $ERR_MISSING_WHICH
   exit 1
 fi
 
-if [ -z "$WGET" -a -z "$CURL" ]; then
+WGET=$($WHICH wget)
+CURL=$($WHICH curl)
+GREP=$($WHICH grep)
+HEAD=$($WHICH head)
+NGINX=$($WHICH nginx)
+
+if [ -z "$WGET" ] && [ -z "$CURL" ]; then
   echo $ERR_MISSING_WGET_AND_CURL
   exit 1
 fi
 
-if [ -z "$GREP" ];then
+if [ -z "$GREP" ]; then
   echo $ERR_MISSING_GREP
   exit 1
 fi
 
-if [ -z "$HEAD" ];then
+if [ -z "$HEAD" ]; then
   echo $ERR_MISSING_HEAD
+  exit 1
+fi
+
+if [ -z "$NGINX" ]; then
+  echo $ERR_MISSING_NGINX
   exit 1
 fi
 
 ##################################################
 # Good to go grep the local and remote version
 
-if [ ! -z "$WGET" ];then
-  VERSION_GH=$($WGET -qO- $ATOM | $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1)
+if [ ! -z "$WGET" ]; then
+  VERSION_GH=$($WGET -qO- "$ATOM" | $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1)
 else
-  VERSION_GH=$($CURL -s $ATOM | $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1)
+  VERSION_GH=$($CURL -s "$ATOM" | $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1)
 fi
 
-if [ $? -ne 0 -o -z "$VERSION_GH" ]; then
+if [ $? -ne 0 ] || [ -z "$VERSION_GH" ]; then
   echo $ERR_GET_REMOTE_VERSION
   exit 1
 fi
 
 VERSION_LO=$(readlink "${HTDOCS}/riot" | cut -d- -f2-)
 
-if [ $? -ne 0 -o -z "$VERSION_LO" ]; then
+if [ $? -ne 0 ] || [ -z "$VERSION_LO" ]; then
   echo $ERR_GET_LOCAL_VERSION
   exit 1
 fi
@@ -148,12 +165,12 @@ fi
 ##################################################
 # Compare local and remote version
 
-if [ "$VERSION_LO" == "$VERSION_GH" ]; then
+if [ "$VERSION_LO" = "$VERSION_GH" ]; then
   echo $OK_UP_TO_DATE
   exit 0
 fi
 
-if [ "$TASK_TODO" == "CHECK" ]; then
+if [ "$TASK_TODO" = "CHECK" ]; then
   echo $ERR_UPDATE_NEEDED
   exit 1
 fi
@@ -161,21 +178,26 @@ fi
 ##################################################
 # Download new version
 
-cd "$HTDOCS"
-
-if [ ! -z "$WGET" ]; then
-  $WGET -q https://github.com/vector-im/riot-web/releases/download/${VERSION_GH}/riot-${VERSION_GH}.tar.gz
-else
-  $CURL -s https://github.com/vector-im/riot-web/releases/download/${VERSION_GH}/riot-${VERSION_GH}.tar.gz > riot-${VERSION_GH}.tar.gz
-fi
-
-if [ $? -ne 0 -o ! -f riot-${VERSION_GH}.tar.gz ]; then
-  echo $ERR_UPDATE_DOWNLOAD
+if ! cd "$HTDOCS"; then
+  echo $ERR_CD_TO_HTDOCS
   exit 1
 fi
 
-if [ "$TASK_TODO" == "DOWNLOAD" ]; then
-  echo $OK_DOWNLOAD_UPDATE
+if [ ! -f "riot-${VERSION_GH}.tar.gz" ]; then
+  if [ ! -z "$WGET" ]; then
+    $WGET -q "https://github.com/vector-im/riot-web/releases/download/${VERSION_GH}/riot-${VERSION_GH}.tar.gz"
+  else
+    $CURL -s "https://github.com/vector-im/riot-web/releases/download/${VERSION_GH}/riot-${VERSION_GH}.tar.gz" > "riot-${VERSION_GH}.tar.gz"
+  fi
+
+  if [ $? -ne 0 ] || [ ! -f "riot-${VERSION_GH}.tar.gz" ]; then
+    echo $ERR_UPDATE_DOWNLOAD
+    exit 1
+  fi
+fi
+
+if [ "$TASK_TODO" = "DOWNLOAD" ]; then
+  echo $ERR_DOWNLOADED_UPDATE_INSTALL_REQUIRED
   exit 0
 fi
 
@@ -187,18 +209,24 @@ if [ "$TASK_TODO" != "INSTALL" ]; then
   exit 1
 fi
 
-tar zxpf riot-${VERSION_GH}.tar.gz
+#tar regardless if already there or not -.-
+tar zxpf "riot-${VERSION_GH}.tar.gz"
 
 if [ $? -ne 0 ]; then
   echo $ERR_UPDATE_EXTRACT
   exit 1
 fi
 
-cp riot-${VERSION_LO}/config.json riot-${VERSION_GH}
-cp riot-${VERSION_LO}/home.html riot-${VERSION_GH}
-chmod og+r riot-${VERSION_LO}/config.json riot-${VERSION_LO}/home.html
+if [ ! -e "riot-${VERSION_LO}/config.json" ] || [ ! -e "riot-${VERSION_LO}/home.html" ]; then
+  echo $ERR_COPY_OLD_CONFIG
+  exit 1
+fi
 
-if [ $(find . -perm /g=r,o=r | wc -l) -ne 0 ]; then
+cp "riot-${VERSION_LO}/config.json" "riot-${VERSION_GH}"
+cp "riot-${VERSION_LO}/home.html" "riot-${VERSION_GH}"
+chmod og+r "riot-${VERSION_LO}/config.json" "riot-${VERSION_LO}/home.html"
+
+if [ $(find . ! -perm /g=r,o=r | wc -l) -ne 0 ]; then
   echo $ERR_EXTRACTED_PERMISSIONS
   exit 1
 fi
@@ -210,26 +238,29 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-ln -s riot-${VERSION_GH} riot
+ln -s "riot-${VERSION_GH}" riot
 
 if [ $? -ne 0 ]; then
   echo $ERR_FAILED_LINK_CREATE
   exit 1
 fi
 
-nginx -t -c /etc/nginx/nginx.conf 
+nginx -t -c /etc/nginx/nginx.conf 1>/dev/null 2>/dev/null 
 
 if [ $? -ne 0 ]; then
   echo $ERR_NGINX_CONFIGTEST
   exit 1
 fi
 
-service nginx reload
+service nginx reload 1>/dev/null 2>/dev/null
 
 if [ $? -ne 0 ]; then
   echo $ERR_NGINX_RELOAD
   exit 1
 fi
+
+echo $OK_UPDATE_INSTALLED
+exit 0
 
 ##################################################
 # Undefined / Unknwon end
