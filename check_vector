@@ -1,10 +1,17 @@
 #!/bin/ash
 #
 # Test vector version and return errors/offsets
+# Expects to find a link in the HTDOCS folder
+# can be pointed to any feed -.-
 #
 # (c) maulware, mauli 2017
 # served as is, change as you want
 #
+# parameters:
+#   $1 -> <atom-url>
+#   $2 -> <HTDOCS-folder>
+#   $3 -> [(CHECK)|DOWNLOAD|INSTALL]
+# 
 
 ##################################################
 # Define error, update-needed and OK return codes
@@ -15,8 +22,7 @@ ERR_TOO_FEW_ARGUMENTS="-0.9901"
 ERR_ATOM_EMPTY="-0.9910"
 ERR_HTDOCS_EMPTY="-0.9911"
 ERR_HTDOCS_NO_DIR="-0.9912"
-ERR_DOWNLOAD_NOT_Y_N="-0.9913"
-ERR_INSTALL_NOT_Y_N="-0.9914"
+ERR_TODO_TASK_INVALID="-0.9913"
 
 ERR_MISSING_WHICH="-0.9920"
 ERR_MISSING_GREP="-0.9921"
@@ -26,8 +32,26 @@ ERR_MISSING_HEAD="-0.9923"
 ERR_GET_REMOTE_VERSION="-0.9930"
 ERR_GET_LOCAL_VERSION="-0.9931"
 
-OK_UP_TO_DATE="0"
-ERR_UPDATE_NEEDED="0.9999"
+ERR_UPDATE_NEEDED="-0.9940"
+
+ERR_UPDATE_DOWNLOAD="-0.9941"
+
+ERR_INSTALL_WILL_NOT_HAPPEN="-0.9950"
+ERR_UPDATE_EXTRACT="-0.9951"
+ERR_EXTRACTED_PERMISSIONS="-0.9952"
+ERR_UPDATE_INSTALL="-0.9953"
+
+ERR_FAILED_RM_LINK="-0.9961"
+ERR_FAILED_LINK_CREATE="-0.9962"
+ERR_NGINX_CONFIGTEST="-0.9963"
+ERR_NGINX_RELOAD="-0.9964"
+
+ERR_UNKNOWN="-0.9999"
+
+OK_UP_TO_DATE="0.0000"
+OK_UPDATE_DOWNLOADED="0.0001"
+OK_UPDATE_INSTALLED="0.0002"
+
 ##################################################
 # Check argument number we require
 
@@ -46,11 +70,7 @@ fi
 
 ATOM="$1"
 HTDOCS="$2"
-AUTO_DOWNLOAD="$3"
-AUTO_INSTALL="$4"
-#ATOM="https://github.com/vector-im/riot-web/releases.atom"
-#HTDOCS="/var/www/html/"
-#HTDOCS="/var/customers/webs/vector.chaostreff.at/"
+TASK_TODO="$3" # either: CHECK,DOWNLOAD,INSTALL
 
 if [ -z "$ATOM" ]; then
   echo $ERR_ATOM_EMPTY
@@ -67,13 +87,12 @@ if [ ! -d "$HTDOCS" ]; then
   exit 1
 fi
 
-if [ ! -z "$AUTO_DOWNLOAD" -a "$AUTO_DOWNLOAD" != "Y" -a "$AUTO_DOWNLOAD" != "N" ]; then
-  echo $ERR_DOWNLOAD_NOT_Y_N
-  exit 1
+if [ ! -z "$TASK_TODO" ]; then
+  TASK_TODO="CHECK"
 fi
 
-if [ ! -z "$AUTO_INSTALL" -a "$AUTO_INSTALL" != "Y" -a "$AUTO_INSTALL" != "N" ]; then
-  echo $ERR_INSTALL_NOT_Y_N
+if [ "$TASK_TODO" != "CHECK" -a "$TASK_TODO" != "DOWNLOAD" -a "$TASK_TODO" != "INSTALL" ]; then
+  echo $ERR_TODO_TASK_INVALID
   exit 1
 fi
 
@@ -105,14 +124,13 @@ if [ -z "$HEAD" ];then
   exit 1
 fi
 
-
 ##################################################
 # Good to go grep the local and remote version
 
 if [ ! -z "$WGET" ];then
-  VERSION_GH=$($WGET -qO- $ATOM| $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1 )
+  VERSION_GH=$($WGET -qO- $ATOM | $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1)
 else
-  VERSION_GH=$($CURL -s $ATOM| $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1 )
+  VERSION_GH=$($CURL -s $ATOM | $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1)
 fi
 
 if [ $? -ne 0 -o -z "$VERSION_GH" ]; then
@@ -120,7 +138,7 @@ if [ $? -ne 0 -o -z "$VERSION_GH" ]; then
   exit 1
 fi
 
-VERSION_LO=$(readlink ${HTDOCS}/riot|cut -d- -f2-)
+VERSION_LO=$(readlink "${HTDOCS}/riot" | cut -d- -f2-)
 
 if [ $? -ne 0 -o -z "$VERSION_LO" ]; then
   echo $ERR_GET_LOCAL_VERSION
@@ -128,13 +146,94 @@ if [ $? -ne 0 -o -z "$VERSION_LO" ]; then
 fi
 
 ##################################################
-# Finally compare local and remote version
+# Compare local and remote version
 
 if [ "$VERSION_LO" == "$VERSION_GH" ]; then
   echo $OK_UP_TO_DATE
   exit 0
 fi
 
-echo $ERR_UPDATE_NEEDED
-exit1
+if [ "$TASK_TODO" == "CHECK" ]; then
+  echo $ERR_UPDATE_NEEDED
+  exit 1
+fi
+
+##################################################
+# Download new version
+
+cd "$HTDOCS"
+
+if [ ! -z "$WGET" ]; then
+  $WGET -q https://github.com/vector-im/riot-web/releases/download/${VERSION_GH}/riot-${VERSION_GH}.tar.gz
+else
+  $CURL -s https://github.com/vector-im/riot-web/releases/download/${VERSION_GH}/riot-${VERSION_GH}.tar.gz > riot-${VERSION_GH}.tar.gz
+fi
+
+if [ $? -ne 0 -o ! -f riot-${VERSION_GH}.tar.gz ]; then
+  echo $ERR_UPDATE_DOWNLOAD
+  exit 1
+fi
+
+if [ "$TASK_TODO" == "DOWNLOAD" ]; then
+  echo $OK_DOWNLOAD_UPDATE
+  exit 0
+fi
+
+##################################################
+# Install new version
+
+if [ "$TASK_TODO" != "INSTALL" ]; then
+  echo $ERR_INSTALL_WILL_NOT_HAPPEN
+  exit 1
+fi
+
+tar zxpf riot-${VERSION_GH}.tar.gz
+
+if [ $? -ne 0 ]; then
+  echo $ERR_UPDATE_EXTRACT
+  exit 1
+fi
+
+cp riot-${VERSION_LO}/config.json riot-${VERSION_GH}
+cp riot-${VERSION_LO}/home.html riot-${VERSION_GH}
+chmod og+r riot-${VERSION_LO}/config.json riot-${VERSION_LO}/home.html
+
+if [ $(find . -perm /g=r,o=r | wc -l) -ne 0 ]; then
+  echo $ERR_EXTRACTED_PERMISSIONS
+  exit 1
+fi
+
+rm riot
+
+if [ $? -ne 0 ]; then
+  echo $ERR_FAILED_RM_LINK
+  exit 1
+fi
+
+ln -s riot-${VERSION_GH} riot
+
+if [ $? -ne 0 ]; then
+  echo $ERR_FAILED_LINK_CREATE
+  exit 1
+fi
+
+nginx -t -c /etc/nginx/nginx.conf 
+
+if [ $? -ne 0 ]; then
+  echo $ERR_NGINX_CONFIGTEST
+  exit 1
+fi
+
+service nginx reload
+
+if [ $? -ne 0 ]; then
+  echo $ERR_NGINX_RELOAD
+  exit 1
+fi
+
+##################################################
+# Undefined / Unknwon end
+
+echo $ERR_UNKNOWN
+exit 1
 
