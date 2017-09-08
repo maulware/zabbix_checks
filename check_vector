@@ -1,0 +1,140 @@
+#!/bin/ash
+#
+# Test vector version and return errors/offsets
+#
+# (c) maulware, mauli 2017
+# served as is, change as you want
+#
+
+##################################################
+# Define error, update-needed and OK return codes
+
+ERR_NO_ARGUMENTS="-0.9900"
+ERR_TOO_FEW_ARGUMENTS="-0.9901"
+
+ERR_ATOM_EMPTY="-0.9910"
+ERR_HTDOCS_EMPTY="-0.9911"
+ERR_HTDOCS_NO_DIR="-0.9912"
+ERR_DOWNLOAD_NOT_Y_N="-0.9913"
+ERR_INSTALL_NOT_Y_N="-0.9914"
+
+ERR_MISSING_WHICH="-0.9920"
+ERR_MISSING_GREP="-0.9921"
+ERR_MISSING_WGET_AND_CURL="-0.9922"
+ERR_MISSING_HEAD="-0.9923"
+
+ERR_GET_REMOTE_VERSION="-0.9930"
+ERR_GET_LOCAL_VERSION="-0.9931"
+
+OK_UP_TO_DATE="0"
+ERR_UPDATE_NEEDED="0.9999"
+##################################################
+# Check argument number we require
+
+if [ $# -eq 0 ];then
+  echo $ERR_NO_ARGUMENTS
+  exit 1
+fi
+
+if [ $# -lt 2 ]; then
+  echo $ERR_TOO_FEW_ARGUMENTS
+  exit 1
+fi
+
+##################################################
+# Check argument content and local files
+
+ATOM="$1"
+HTDOCS="$2"
+AUTO_DOWNLOAD="$3"
+AUTO_INSTALL="$4"
+#ATOM="https://github.com/vector-im/riot-web/releases.atom"
+#HTDOCS="/var/www/html/"
+#HTDOCS="/var/customers/webs/vector.chaostreff.at/"
+
+if [ -z "$ATOM" ]; then
+  echo $ERR_ATOM_EMPTY
+  exit 1
+fi
+
+if [ -z "$HTDOCS" ]; then
+  echo $ERR_HTDOCS_EMPTY
+  exit 1
+fi
+
+if [ ! -d "$HTDOCS" ]; then
+  echo $ERR_HTDOCS_NO_DIR
+  exit 1
+fi
+
+if [ ! -z "$AUTO_DOWNLOAD" -a "$AUTO_DOWNLOAD" != "Y" -a "$AUTO_DOWNLOAD" != "N" ]; then
+  echo $ERR_DOWNLOAD_NOT_Y_N
+  exit 1
+fi
+
+if [ ! -z "$AUTO_INSTALL" -a "$AUTO_INSTALL" != "Y" -a "$AUTO_INSTALL" != "N" ]; then
+  echo $ERR_INSTALL_NOT_Y_N
+  exit 1
+fi
+
+##################################################
+# Check the local tools we want to use
+
+WGET=`which wget`
+CURL=`which curl`
+GREP=`which grep`
+HEAD=`which head`
+
+if [ $? -eq 127 ]; then
+  echo $ERR_MISSING_WHICH
+  exit 1
+fi
+
+if [ -z "$WGET" -a -z "$CURL" ]; then
+  echo $ERR_MISSING_WGET_AND_CURL
+  exit 1
+fi
+
+if [ -z "$GREP" ];then
+  echo $ERR_MISSING_GREP
+  exit 1
+fi
+
+if [ -z "$HEAD" ];then
+  echo $ERR_MISSING_HEAD
+  exit 1
+fi
+
+
+##################################################
+# Good to go grep the local and remote version
+
+if [ ! -z "$WGET" ];then
+  VERSION_GH=$($WGET -qO- $ATOM| $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1 )
+else
+  VERSION_GH=$($CURL -s $ATOM| $GREP '<title>' | $GREP -o "v[^<]*" | $HEAD -n 1 )
+fi
+
+if [ $? -ne 0 -o -z "$VERSION_GH" ]; then
+  echo $ERR_GET_REMOTE_VERSION
+  exit 1
+fi
+
+VERSION_LO=$(readlink ${HTDOCS}/riot|cut -d- -f2-)
+
+if [ $? -ne 0 -o -z "$VERSION_LO" ]; then
+  echo $ERR_GET_LOCAL_VERSION
+  exit 1
+fi
+
+##################################################
+# Finally compare local and remote version
+
+if [ "$VERSION_LO" == "$VERSION_GH" ]; then
+  echo $OK_UP_TO_DATE
+  exit 0
+fi
+
+echo $ERR_UPDATE_NEEDED
+exit1
+
