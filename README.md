@@ -7,7 +7,7 @@ put refernce into into agentd.conf.d/ if you want to use it with zabbix
 put into crontab or /etc/cron.d ...
 
 ## Riot (Vector) check/automation
-This is meant to either help monitor, autodownload to prepar, or even fully upgrade a {Riot (Vector)}(https://github.com/vector-im/riot-web/) installation that is running on nginx.
+This is meant to either help monitor, autodownload to prepar, or even fully upgrade a [Riot (Vector)](https://github.com/vector-im/riot-web/) installation that is running on nginx.
 
 ### requirements
 * Having a symlink in the HTDOCS folder to the newest running installation (and have nginx configured to use this).
