@@ -1,6 +1,6 @@
 #!/bin/ash
 #
-# Test vector version and return errors/offsets
+# Test Riot version and return errors/offsets
 # Expects to find a link in the HTDOCS folder
 # can be pointed to any feed -.-
 #
