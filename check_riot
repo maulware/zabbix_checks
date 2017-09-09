@@ -11,7 +11,7 @@
 #   $1 -> <atom-url>
 #   $2 -> <HTDOCS-folder>
 #   $3 -> [(CHECK)|DOWNLOAD|INSTALL]
-# 
+#
 
 ##################################################
 # Define error, update-needed and OK return codes
