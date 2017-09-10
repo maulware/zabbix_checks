@@ -225,7 +225,7 @@ cp "riot-${VERSION_LO}/config.json" "riot-${VERSION_GH}"
 cp "riot-${VERSION_LO}/home.html" "riot-${VERSION_GH}"
 chmod og+r "riot-${VERSION_LO}/config.json" "riot-${VERSION_LO}/home.html"
 
-if [ $(find . ! -perm /g=r,o=r | wc -l) -ne 0 ]; then
+if [ $(find "./riot-${VERSION_GH}/" ! -perm /g=r,o=r | wc -l) -ne 0 ]; then
   echo $ERR_EXTRACTED_PERMISSIONS
   exit 1
 fi
