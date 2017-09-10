@@ -1,0 +1,32 @@
+#!/bin/ash
+#
+# (c) maulware, mauli 2017
+#
+# This script automatically creates sudoers file for zabbix checks
+# Do not trust automated git pull - hook - update - processes !
+# If you want something like this, at least add a signature check.
+#
+
+# Goal:
+#zabbix ALL=(ALL) NOPASSWD: sha256:b1766c716f8d4eae36e2cb171407f92450fabbb603cc219cba59d6b5232d0174 /usr/local/bin/check_riot
+
+tmp="$(mktemp)"
+check_dir="/usr/local/bin"
+sudoers_file="/etc/sudoers.d/zabbix"
+
+spaces="                    "
+cat<<EOF>"$tmp"
+Cmnd_Alias    ZABBIXCHECKS = \\
+EOF
+
+for check in check_*; do
+  cp "$check" "$check_dir"
+  echo "${checks}${enter}${spaces}$(sha256sum ${check_dir}/${check}) *\\" >> "$tmp"
+done
+# remove tailing \
+sed -i '$ s/.$//' "$tmp"
+
+echo "zabbix ALL=(ALL) NOPASSWD: ZABBIXCHECKS" >> "$tmp"
+
+cat "$tmp" > "${sudoers_file}"
+rm "$tmp"
