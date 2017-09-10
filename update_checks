@@ -21,10 +21,10 @@ EOF
 
 for check in check_*; do
   cp "$check" "$check_dir"
-  echo "${checks}${enter}${spaces}$(sha256sum ${check_dir}/${check}) *\\" >> "$tmp"
+  echo "${checks}${enter}${spaces}sha256:$(sha256sum ${check_dir}/${check}) *,\\" >> "$tmp"
 done
 # remove tailing \
-sed -i '$ s/.$//' "$tmp"
+sed -i '$ s/..$//' "$tmp"
 
 echo "zabbix ALL=(ALL) NOPASSWD: ZABBIXCHECKS" >> "$tmp"
 
